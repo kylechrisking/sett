@@ -437,6 +437,60 @@ class CardEdits(unittest.TestCase):
         self.assertEqual(self.http(signed, body, {"Authorization": "Bearer tok"}), 200)
 
 
+class SettSettings(unittest.TestCase):
+    def setUp(self):
+        from sett import settings as S
+        self.S = S
+        for f in ("settings.json", "edits.json"):
+            if (Path(TMP) / f).exists():
+                (Path(TMP) / f).unlink()
+
+    tearDown = setUp
+
+    def test_clean(self):
+        S = self.S
+        doc = S.clean({"title": " Lab ", "ui": {"accent": "#34d399", "density": "compact", "clock": "12h"},
+                       "weather": {"latitude": "29.4", "longitude": "-98.5", "units": "imperial"},
+                       "bookmarks": [{"name": "Router", "url": "http://10.0.0.1"}, {"name": "", "url": ""}],
+                       "vitals": {"url": "http://vitals:8098/", "token": "secret-token-1234"}, "hidden": ["a", "a"]}, {})
+        self.assertEqual((doc["title"], doc["ui"], doc["weather"]["units"]), ("Lab", {"accent": "#34d399", "density": "compact"}, "imperial"))
+        self.assertEqual(doc["bookmarks"], [{"name": "Router", "url": "http://10.0.0.1", "group": "Links"}])
+        self.assertEqual((doc["vitals"]["url"], doc["hidden"]), ("http://vitals:8098", ["a"]))
+        masked = S.view(doc)
+        self.assertNotIn("secret", json.dumps(masked))
+        self.assertEqual(S.clean(masked, doc)["vitals"]["token"], "secret-token-1234")    # unchanged when masked
+        for bad in ({"ui": {"accent": "red"}}, {"weather": {"latitude": "x", "longitude": "1"}},
+                    {"bookmarks": [{"name": "a", "url": "ftp://x"}]}, {"search": "yahoo"}, {"caddy_file": "Caddyfile"}):
+            with self.assertRaises(S.Invalid):
+                S.clean(bad, {})
+
+    def test_save_applies_and_hides_for_everyone(self):
+        e = Engine(Config())
+        e.services = {"a": Service("10.0.0.5:8989", "sonarr", "Sonarr", "Media", "sonarr", "pve:lxc/105", "10.0.0.5", 8989,
+                                   key="sonarr@pve:lxc/105")}
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(e))
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{httpd.server_address[1]}"
+        try:
+            r = urllib.request.Request(base + "/api/settings", method="PUT", headers={"Content-Type": "application/json"},
+                                       data=json.dumps({"title": "Lab", "hidden": ["sonarr@pve:lxc/105"]}).encode())
+            with urllib.request.urlopen(r, timeout=5) as resp:
+                view = json.loads(resp.read())
+            self.assertEqual(view["effective"]["title"], "Lab")
+            st = e.state()
+            self.assertEqual((st["title"], st["services"], st["hidden_cards"][0]["name"]), ("Lab", [], "Sonarr"))
+            with urllib.request.urlopen(base + "/manifest.webmanifest", timeout=5) as resp:
+                self.assertEqual(json.loads(resp.read())["name"], "Lab")
+            bad = urllib.request.Request(base + "/api/settings", method="PUT", data=b"{}",
+                                         headers={"Content-Type": "application/json", "Origin": "http://evil.example"})
+            with self.assertRaises(urllib.error.HTTPError) as cm:
+                urllib.request.urlopen(bad, timeout=5)
+            self.assertEqual(cm.exception.code, 403)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
 class Passwords(unittest.TestCase):
     def test_hash_and_check(self):
         h = A.hash_password("correct horse", rounds=1000)

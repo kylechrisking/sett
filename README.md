@@ -107,6 +107,12 @@ What you can change:
 
 Separately, every card has a ⋯ menu to pin it to the top or hide it. That's
 saved per browser, so everyone in the house can set things up their own way.
+There's a **Settings** page too (link at the bottom of the dashboard): title,
+theme, accent, clock, weather, links, cards hidden for everyone, the Vitals
+connection (with a Test button) and your Caddyfile. It's saved in the data
+folder on top of `sett.toml`, and applies straight away. On a phone, "Add to
+Home Screen" installs Sett like an app.
+
 The same menu has **Edit card…** to change a card's name, description,
 category, link or icon for everyone. Those edits are kept in the data folder
 on top of `sett.toml`, and "Put back as discovered" undoes them. With sign-in

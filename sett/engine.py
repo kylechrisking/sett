@@ -167,6 +167,12 @@ class Engine:
                 log.warning(self.config_error)
                 self.cfg.files = {f: config._mtime(Path(f)) for f in self.cfg.files}
                 continue
+            self.reload(new)
+
+    def reload(self, new: Config) -> None:
+        """Switch to a new config (a file changed, or the settings page saved)."""
+        from . import config
+        with self.lock:
             self.config_error = None
             if self.cfg.weather != new.weather:
                 self.weather = None   # removed or moved: never show the old place's forecast
@@ -186,9 +192,9 @@ class Engine:
                                     for p in self.providers}
                 self._start_sources()
             self.force_identify = True
-            self.changed.set()
-            self.notify()
-            log.info("config reloaded%s", " (discovery restarted)" if restart else "")
+        self.changed.set()
+        self.notify()
+        log.info("config reloaded%s", " (discovery restarted)" if restart else "")
 
     def _provider_loop(self, p, gen: int) -> None:
         while gen == self.gen:
@@ -498,6 +504,7 @@ class Engine:
         for s in services:
             same_host[s.name].add(s.host_id)
         svc_out = []
+        hidden_for_all: list[dict] = []
         for s in services:
             d = s.to_dict()
             for k in ("check", "fields", "refresh", "missing_since", "matched"):
@@ -515,6 +522,9 @@ class Engine:
                 d["url"] = self.cfg.caddy_links[f"{s.address}:{s.port}"] + (urlparse(d["url"]).path if d.get("url") else "")
             o = self._override(s, d)
             if o.get("hide"):
+                continue
+            if s.key in self.cfg.hidden_keys:
+                hidden_for_all.append({"key": s.key, "name": d["name"], "host": d["host"]})
                 continue
             d.update({k: o[k] for k in ("name", "description", "url", "category", "icon") if k in o})
             e = self.edits.get(s.key) or {}
@@ -567,6 +577,7 @@ class Engine:
             "views": self.cfg.views,
             "ui": self.cfg.ui,
             "config_error": self.config_error,
+            "hidden_cards": hidden_for_all,
             "providers": list(self.pstatus.values()) + ([{
                 "name": "vitals", "ok": self.vitals.ok, "error": self.vitals.error, "at": self.vitals.at,
                 "detail": self.vitals.describe() if self.vitals.ok else ""}] if self.vitals else []),

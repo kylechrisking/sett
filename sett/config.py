@@ -29,6 +29,7 @@ class Config:
     overrides: dict[str, dict] = field(default_factory=dict)  # [override."app" | "app@host" | "Name"]
     links: dict[str, str] = field(default_factory=dict)     # "ip:port" -> URL shown on the card
     caddy_links: dict[str, str] = field(default_factory=dict)  # "ip:port" -> site URL, from [caddy] file
+    hidden_keys: set = field(default_factory=set)           # cards hidden for everyone (settings page)
     categories: list[str] = field(default_factory=list)     # display order
     weather: dict = field(default_factory=dict)
     search: str = ""                                        # "google" | "duckduckgo" | "" (filter only)
@@ -110,7 +111,13 @@ def load() -> Config:
     for key in ("brock", "vitals"):   # the token can live with the other secrets (under either name)
         if isinstance(cfg.secrets.get(key), dict):
             cfg.vitals = {**cfg.vitals, **cfg.secrets[key]}
-    caddy_file = (raw.get("caddy") or {}).get("file") or env.get("SETT_CADDYFILE")
+    from . import settings   # the /settings page's changes, layered on top
+    sp_page = settings.path()
+    if sp_page:
+        files[str(sp_page)] = _mtime(sp_page)
+    page = settings.load_doc()
+    settings.apply(cfg, page)
+    caddy_file = page.get("caddy_file") or (raw.get("caddy") or {}).get("file") or env.get("SETT_CADDYFILE")
     if caddy_file:
         from . import caddy
         files[str(caddy_file)] = _mtime(Path(caddy_file))   # edits to the Caddyfile reload too

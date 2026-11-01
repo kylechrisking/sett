@@ -311,6 +311,7 @@ function render() {
   ).join("") + `<span class="spacer"></span>` +
     (nHidden ? `<button type="button" class="linkish" id="toggle-hidden">${showHidden ? "Hide" : "Show"} ${nHidden} hidden</button>` : "") +
     (st.user && st.auth?.login && !st.user.startsWith("token:") ? `<button type="button" class="linkish" id="sign-out">Sign out ${esc(st.user)}</button>` : "") +
+    (st.can_edit ? `<a class="linkish" href="settings">Settings</a>` : "") +
     `<span>Sett · read-only</span>`;
 
   // Extensions (custom.js) can listen for this and read the state.
@@ -325,7 +326,8 @@ function openMenu(btn) {
   menu.dataset.id = id;
   menu.innerHTML = `<button type="button" data-act="pin">${pinned.has(id) ? "Unpin" : "Pin to top"}</button>
     <button type="button" data-act="hide">${hidden.has(id) ? "Unhide" : "Hide"}</button>
-    ${state?.can_edit ? `<button type="button" data-act="edit">Edit card…</button>` : ""}`;
+    ${state?.can_edit ? `<button type="button" data-act="edit">Edit card…</button>
+      <button type="button" data-act="hide-all">Hide for everyone</button>` : ""}`;
   const r = btn.getBoundingClientRect();
   menu.hidden = false;
   menu.style.top = `${scrollY + r.bottom + 6}px`;
@@ -337,6 +339,7 @@ document.addEventListener("click", (e) => {
   if (btn) { e.preventDefault(); return menu.hidden || menu.dataset.id !== btn.dataset.menu ? openMenu(btn) : (menu.hidden = true); }
   const act = e.target.closest("#card-menu [data-act]");
   if (act && act.dataset.act === "edit") { menu.hidden = true; return openEditor(menu.dataset.id); }
+  if (act && act.dataset.act === "hide-all") { menu.hidden = true; return hideForEveryone(menu.dataset.id); }
   if (act) {
     const id = menu.dataset.id, set = act.dataset.act === "pin" ? pinned : hidden;
     set.has(id) ? set.delete(id) : set.add(id);
@@ -396,6 +399,16 @@ $("#edit-form").addEventListener("submit", (e) => {
 });
 $("#edit-reset").addEventListener("click", () => saveEdit(null));
 $("#edit-cancel").addEventListener("click", () => editor.close());
+
+// Hide a card for everyone: added to the settings page's hidden list (where it can be shown again).
+async function hideForEveryone(key) {
+  const r = await fetch("api/settings", { cache: "no-store" });
+  if (!r.ok) return;
+  const doc = (await r.json()).doc;
+  doc.hidden = [...new Set([...(doc.hidden || []), key])];
+  const w = await fetch("api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(doc) });
+  if (w.ok) fetch("api/state", { cache: "no-store" }).then((x) => x.json()).then(accept).catch(() => {});
+}
 
 // ---- clock + web search -------------------------------------------------------
 

@@ -113,8 +113,8 @@ def make_handler(engine: Engine, auth: Auth | None = None):
             secure = "; Secure" if self.https() else ""
             return f"{COOKIE}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}"
 
-        def _body(self) -> dict:
-            n = min(int(self.headers.get("Content-Length") or 0), 16384)
+        def _body(self, limit: int = 16384) -> dict:
+            n = min(int(self.headers.get("Content-Length") or 0), limit)
             try:
                 d = json.loads(self.rfile.read(n) or b"{}")
             except ValueError:
@@ -128,7 +128,7 @@ def make_handler(engine: Engine, auth: Auth | None = None):
             user = auth.identify(self.headers, self.client_address[0])
             if user or path in PUBLIC or path.startswith("/themes/"):
                 return True, user
-            if path in ("/", "/index.html") and auth.login_enabled:
+            if path in ("/", "/index.html", "/settings") and auth.login_enabled:
                 self._send(302, b"", "text/plain", headers={"Location": "login"})
             elif path in ("/", "/index.html"):
                 # No passwords to sign in with: only the SSO proxy (or a token) gets in.
@@ -143,8 +143,57 @@ def make_handler(engine: Engine, auth: Auth | None = None):
         def do_HEAD(self):
             self.do_GET()
 
+        def _may_change(self) -> tuple[bool, str | None]:
+            """Settings and card edits: allowed (sign-in rules as for editing cards), and from our page."""
+            user = auth.identify(self.headers, self.client_address[0]) if auth.enabled else None
+            if not can_edit(engine, auth, user):
+                if auth.enabled and not user and engine.cfg.ui.get("edit") is not False:
+                    self._json({"error": "sign in to change this"}, 401)
+                else:
+                    self._json({"error": "changes aren't allowed here ([ui] edit = false)"}, 403)
+                return False, None
+            origin = self.headers.get("Origin")
+            if (self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json"
+                    or (origin and urlparse(origin).netloc != self.headers.get("Host", ""))):
+                self._json({"error": "send JSON from Sett's own page"}, 403)
+                return False, None
+            return True, user
+
+        def do_PUT(self):
+            if self.path.split("?")[0] != "/api/settings":
+                return self._json({"error": "not found"}, 404)
+            ok, _ = self._may_change()
+            if not ok:
+                return
+            from . import config, settings
+            try:
+                doc = settings.clean(self._body(limit=256 * 1024), settings.load_doc())
+                settings.save_doc(doc)
+            except settings.Invalid as e:
+                return self._json({"error": str(e)}, 422)
+            except OSError as e:
+                return self._json({"error": str(e)}, 500)
+            engine.reload(config.load())
+            return self._json(settings_view(engine))
+
         def do_POST(self):
             path = self.path.split("?")[0]
+            if path == "/api/settings/test-vitals":
+                ok, _ = self._may_change()
+                if not ok:
+                    return
+                from . import settings
+                from .vitals import Vitals
+                d = self._body()
+                token = str(d.get("token") or "")
+                if settings.MASK in token:
+                    token = (settings.load_doc().get("vitals") or {}).get("token", "") or engine.cfg.vitals.get("token", "")
+                if not str(d.get("url") or "").startswith(("http://", "https://")):
+                    return self._json({"ok": False, "error": "the address starts with http:// or https://"})
+                v = Vitals({"url": d["url"], "token": token})
+                v.poll()
+                return self._json({"ok": bool(v.ok), "error": v.error,
+                                   "detail": f"{v.describe()}, {len(v.sites)} sites, {len(v.hosts)} hosts" if v.ok else ""})
             if path == "/api/edit":
                 user = auth.identify(self.headers, self.client_address[0]) if auth.enabled else None
                 if not can_edit(engine, auth, user):
@@ -192,6 +241,21 @@ def make_handler(engine: Engine, auth: Auth | None = None):
                 return self._json(status(engine))
             if path == "/healthz":
                 return self._send(200, b"ok", "text/plain")
+            if path in ("/settings", "/api/settings"):
+                if not can_edit(engine, auth, user):
+                    return self._json({"error": "changing settings isn't allowed here ([ui] edit = false)"}, 403)
+                if path == "/api/settings":
+                    return self._json(settings_view(engine))
+                path = "/settings.html"
+            if path == "/manifest.webmanifest":
+                # Installable: "Add to home screen" on a phone, "Install" in a desktop browser.
+                body = json.dumps({"name": engine.cfg.title, "short_name": engine.cfg.title[:12], "start_url": "./",
+                                   "scope": "./", "display": "standalone", "background_color": "#090c15",
+                                   "theme_color": "#090c15",
+                                   "icons": [{"src": "favicon.svg", "sizes": "any", "type": "image/svg+xml",
+                                              "purpose": "any"},
+                                             {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}]})
+                return self._send(200, body.encode(), "application/manifest+json")
             if path == "/api/history":
                 return self._json(engine.history.snapshot())
             if path == "/login":
@@ -253,6 +317,16 @@ def make_handler(engine: Engine, auth: Auth | None = None):
                 return
 
     return Handler
+
+
+def settings_view(engine: Engine) -> dict:
+    from . import settings
+    cfg = engine.cfg
+    return {"doc": settings.view(settings.load_doc()), "themes": list_themes(), "can_save": settings.path() is not None,
+            "effective": {"title": cfg.title, "theme": cfg.theme, "search": cfg.search, "ui": cfg.ui,
+                          "weather": cfg.weather, "vitals_url": cfg.vitals.get("url", "")},
+            "file_bookmarks": [b for b in cfg.bookmarks if b not in (settings.load_doc().get("bookmarks") or [])],
+            "hidden_cards": engine.state().get("hidden_cards", []), "config_error": engine.config_error}
 
 
 def serve(engine: Engine, port: int) -> None:
