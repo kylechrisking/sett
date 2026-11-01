@@ -35,6 +35,9 @@ def main() -> None:
                         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s")
     cfg = config.load()
     engine = Engine(cfg)
+    if not config.data_persistent():
+        logging.getLogger("sett").warning("no /data volume: settings, card edits and history are kept inside the "
+                                          "container and lost when it's rebuilt (mount a folder at /data)")
 
     def stop(signum, frame):   # docker stop sends SIGTERM: keep the sparklines first
         engine.save_history()

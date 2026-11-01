@@ -149,6 +149,28 @@ def data_dir() -> Path | None:
     return None
 
 
+def data_persistent() -> bool:
+    """Will what's saved in the data folder survive a rebuild of the container? True when
+    SETT_DATA was set, or /data is a mounted volume; False for the fallback cache folder."""
+    d = data_dir()
+    if not d:
+        return False
+    if os.environ.get("SETT_DATA"):
+        return True
+    return d == Path("/data") and _mounted(d)
+
+
+def _mounted(path: Path) -> bool:
+    """Is `path` a volume or bind mount (so it outlives the container)?"""
+    try:
+        with open("/proc/self/mountinfo") as f:
+            if any(line.split()[4] == str(path) for line in f if len(line.split()) > 4):
+                return True
+    except OSError:
+        pass
+    return os.path.ismount(path)
+
+
 def _mtime(p: Path) -> float:
     try:
         return p.stat().st_mtime

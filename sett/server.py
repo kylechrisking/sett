@@ -322,7 +322,9 @@ def make_handler(engine: Engine, auth: Auth | None = None):
 def settings_view(engine: Engine) -> dict:
     from . import settings
     cfg = engine.cfg
+    from .config import data_persistent
     return {"doc": settings.view(settings.load_doc()), "themes": list_themes(), "can_save": settings.path() is not None,
+            "persistent": data_persistent(),
             "effective": {"title": cfg.title, "theme": cfg.theme, "search": cfg.search, "ui": cfg.ui,
                           "weather": cfg.weather, "vitals_url": cfg.vitals.get("url", "")},
             "file_bookmarks": [b for b in cfg.bookmarks if b not in (settings.load_doc().get("bookmarks") or [])],
