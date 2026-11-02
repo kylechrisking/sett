@@ -302,7 +302,8 @@ function render() {
       title="${esc(x.detail || x.status)}"><span class="dot ${x.status === "up" ? "up" : x.status === "down" ? "down" : ""}"></span>${esc(x.name)}</a>`).join("");
   $("#weather").hidden = !w;
   if (w) $("#weather").textContent = `${w.temp}${w.unit} ${w.text} · H ${w.high}° L ${w.low}°${w.label ? ` · ${w.label}` : ""}`;
-  $("#q").placeholder = st.search ? "Filter, or Enter to search the web" : "Filter";
+  const jump = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘K" : "Ctrl+K";
+  $("#q").placeholder = st.search ? `Filter, Enter to search the web · ${jump} to jump` : `Filter · ${jump} to jump`;
 
   const nHidden = st.services.filter((s) => hidden.has(s.key)).length;
   $("#footer").innerHTML = st.providers.map((p) =>
