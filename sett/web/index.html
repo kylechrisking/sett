@@ -84,6 +84,11 @@
     <footer id="footer" class="footer"></footer>
   </div>
   <div id="card-menu" class="card-menu" role="menu" hidden></div>
+  <dialog id="palette" class="palette" aria-label="Open a service or link">
+    <input id="pal-q" type="search" placeholder="Open a service, link or view…" autocomplete="off" aria-controls="pal-list">
+    <ul id="pal-list" role="listbox"></ul>
+    <div class="pal-hint">↑↓ to pick · Enter to open · Esc to close</div>
+  </dialog>
   <dialog id="editor" class="editor" aria-labelledby="editor-title">
     <form id="edit-form" method="dialog">
       <h3 id="editor-title">Edit card</h3>

@@ -410,6 +410,74 @@ async function hideForEveryone(key) {
   if (w.ok) fetch("api/state", { cache: "no-store" }).then((x) => x.json()).then(accept).catch(() => {});
 }
 
+// ---- quick open (Ctrl+K / Cmd+K) ----------------------------------------------------
+// Type a few letters of a service, host, category, link or view; Enter opens it.
+
+const palette = $("#palette");
+let palItems = [], palPick = 0;
+
+function palSources() {
+  if (!state) return [];
+  const out = state.services.filter((s) => s.url).map((s) => ({
+    kind: "service", label: s.name, sub: [s.host, s.category].filter(Boolean).join(" · "), url: s.url, icon: s.icon,
+    text: `${s.name} ${s.app} ${s.host || ""} ${s.category} ${s.description || ""}`.toLowerCase(), status: s.status }));
+  for (const b of state.bookmarks || []) out.push({ kind: "link", label: b.name, sub: b.group || "Links", url: b.url,
+    text: `${b.name} ${b.group || ""} ${b.url}`.toLowerCase() });
+  for (const v of views()) out.push({ kind: "view", label: `${v.name} view`, sub: "View", view: v.id, text: `${v.name} view`.toLowerCase() });
+  if (state.can_edit) out.push({ kind: "page", label: "Settings", sub: "Sett", url: "settings", same: true, text: "settings preferences" });
+  return out;
+}
+
+// Lower is better: starts with the query, then a word starts with it, then contains it,
+// then has its letters in order (so "sna" finds Sonarr).
+function palScore(item, q) {
+  if (!q) return 0;
+  const label = item.label.toLowerCase();
+  if (label.startsWith(q)) return 0;
+  if (label.split(/[\s·._-]+/).some((w) => w.startsWith(q))) return 1;
+  if (item.text.includes(q)) return 2;
+  let i = 0;
+  for (const ch of label) if (ch === q[i]) i++;
+  return i === q.length ? 3 : null;
+}
+
+function palRender() {
+  const q = $("#pal-q").value.trim().toLowerCase();
+  palItems = palSources().map((it) => [palScore(it, q), it]).filter(([s]) => s !== null)
+    .sort((a, b) => a[0] - b[0] || a[1].label.localeCompare(b[1].label)).slice(0, 12).map(([, it]) => it);
+  palPick = Math.min(palPick, Math.max(0, palItems.length - 1));
+  $("#pal-list").innerHTML = palItems.length ? palItems.map((it, i) => `<li role="option" data-i="${i}" aria-selected="${i === palPick}">
+      <span class="dot ${it.status === "up" ? "up" : it.status === "down" ? "down" : ""}"></span>
+      <b>${esc(it.label)}</b><span class="pal-sub">${esc(it.sub || "")}</span></li>`).join("")
+    : `<li class="pal-none">Nothing matches.</li>`;
+}
+
+function palOpen(it, newTab = true) {
+  if (!it) return;
+  palette.close();
+  if (it.view) return document.querySelector(`#tabs a[data-view="${CSS.escape(it.view)}"]`)?.click();
+  if (it.same || !newTab) location.href = it.url;
+  else window.open(it.url, "_blank", "noopener");
+}
+
+function palToggle() {
+  if (palette.open) return palette.close();
+  $("#pal-q").value = ""; palPick = 0; palRender();
+  palette.showModal(); $("#pal-q").focus();
+}
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); palToggle(); }
+});
+$("#pal-q").addEventListener("input", () => { palPick = 0; palRender(); });
+$("#pal-q").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); palPick = Math.min(palPick + 1, palItems.length - 1); palRender(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); palPick = Math.max(palPick - 1, 0); palRender(); }
+  else if (e.key === "Enter") { e.preventDefault(); palOpen(palItems[palPick], !(e.ctrlKey || e.metaKey)); }
+});
+$("#pal-list").addEventListener("click", (e) => { const li = e.target.closest("li[data-i]"); if (li) palOpen(palItems[+li.dataset.i]); });
+palette.addEventListener("click", (e) => { if (e.target === palette) palette.close(); });   // click outside the box
+
 // ---- clock + web search -------------------------------------------------------
 
 function tick() {

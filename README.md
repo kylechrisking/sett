@@ -113,6 +113,9 @@ connection (with a Test button) and your Caddyfile. It's saved in the data
 folder on top of `sett.toml`, and applies straight away. On a phone, "Add to
 Home Screen" installs Sett like an app.
 
+Press **Ctrl+K** (⌘K on a Mac) anywhere to jump: type a few letters of a
+service, host, category, link or view and press Enter.
+
 The same menu has **Edit card…** to change a card's name, description,
 category, link or icon for everyone. Those edits are kept in the data folder
 on top of `sett.toml`, and "Put back as discovered" undoes them. With sign-in
