@@ -578,6 +578,7 @@ class Engine:
             "ui": self.cfg.ui,
             "config_error": self.config_error,
             "hidden_cards": hidden_for_all,
+            "proxmox_url": (self.cfg.proxmox.get("url") or "").rstrip("/"),
             "providers": list(self.pstatus.values()) + ([{
                 "name": "vitals", "ok": self.vitals.ok, "error": self.vitals.error, "at": self.vitals.at,
                 "detail": self.vitals.describe() if self.vitals.ok else ""}] if self.vitals else []),

@@ -349,6 +349,7 @@ class VitalsUptime(unittest.TestCase):
             Host("pve:lxc/131", "ai", "lxc", "running", "10.0.0.131", parent="pve:node/pve1")])}
         st = e.state()
         [node] = st["nodes"]
+        self.assertEqual(st["proxmox_url"], "")
         self.assertEqual(node["agent"], {"name": "pve1", "status": "up", "summary": "/ 40% · RAM 61% · 3 updates",
                                          "problems": ["disk: /mnt/tank 93%"]})
         guests = {g["name"]: g["agent"] for g in node["guests"]}

@@ -423,6 +423,17 @@ function palSources() {
     text: `${s.name} ${s.app} ${s.host || ""} ${s.category} ${s.description || ""}`.toLowerCase(), status: s.status }));
   for (const b of state.bookmarks || []) out.push({ kind: "link", label: b.name, sub: b.group || "Links", url: b.url,
     text: `${b.name} ${b.group || ""} ${b.url}`.toLowerCase() });
+  // Proxmox nodes and guests: open them in the Proxmox web UI.
+  const pve = state.proxmox_url;
+  if (pve) {
+    for (const n of state.nodes || []) {
+      out.push({ kind: "pve", label: n.name, sub: `Proxmox node${n.address ? ` · ${n.address}` : ""}`, url: `${pve}/#v1:0:=node%2F${encodeURIComponent(n.name)}`,
+                 text: `${n.name} ${n.address || ""} node proxmox`.toLowerCase(), status: n.status === "online" ? "up" : "down" });
+      for (const g of n.guests || []) out.push({ kind: "pve", label: `${g.name} (${g.kind === "lxc" ? "CT" : "VM"} ${g.vmid})`,
+        sub: `on ${n.name}${g.address ? ` · ${g.address}` : ""}`, url: `${pve}/#v1:0:=${g.kind}%2F${g.vmid}`,
+        text: `${g.name} ${g.vmid} ${g.address || ""} ${g.kind} ${n.name}`.toLowerCase(), status: g.status === "running" ? "up" : "down" });
+    }
+  }
   for (const v of views()) out.push({ kind: "view", label: `${v.name} view`, sub: "View", view: v.id, text: `${v.name} view`.toLowerCase() });
   if (state.can_edit) out.push({ kind: "page", label: "Settings", sub: "Sett", url: "settings", same: true, text: "settings preferences" });
   return out;
